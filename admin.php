@@ -3,9 +3,18 @@ session_start();
 $ADMIN_PASSWORD = 'realtor2025';
 $DATA_FILE = __DIR__ . '/leads.json';
 $STATS_FILE = __DIR__ . '/stats.json';
+$CONFIG_FILE = __DIR__ . '/config.json';
 
 if (!file_exists($DATA_FILE)) file_put_contents($DATA_FILE, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 if (!file_exists($STATS_FILE)) file_put_contents($STATS_FILE, json_encode(['total_forms' => 0, 'today' => ['date' => date('Y-m-d'), 'forms' => 0, 'views' => 0]], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+if (!file_exists($CONFIG_FILE)) {
+    $defaultConfig = [
+        'site' => ['title' => 'Риэлтор-Александр', 'description' => 'Недвижимость в Крыму'],
+        'hero' => ['title' => 'Недвижимость Крыма', 'subtitle' => 'Покупка, продажа и аренда'],
+        'contact' => ['phone' => '+7 (978) 732-42-32', 'email' => 'crimax@inbox.ru']
+    ];
+    file_put_contents($CONFIG_FILE, json_encode($defaultConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+}
 
 if (isset($_GET['logout'])) { session_destroy(); header('Location: admin.php'); exit; }
 
@@ -17,13 +26,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password'])) {
 
 $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'];
 
-if ($isLoggedIn) {
-    if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
-        $leads = json_decode(file_get_contents($DATA_FILE), true) ?: [];
-        if (isset($leads[$_GET['delete']])) { unset($leads[$_GET['delete']]); file_put_contents($DATA_FILE, json_encode(array_values($leads), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); }
-        header('Location: admin.php?tab=leads'); exit;
+// Обработка сохранения конфигурации
+if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
+    $config = json_decode(file_get_contents($CONFIG_FILE), true) ?: [];
+    
+    // Обновляем все поля конфигурации
+    if (isset($_POST['site'])) $config['site'] = $_POST['site'];
+    if (isset($_POST['colors'])) $config['colors'] = $_POST['colors'];
+    if (isset($_POST['header'])) $config['header'] = $_POST['header'];
+    if (isset($_POST['hero'])) $config['hero'] = $_POST['hero'];
+    if (isset($_POST['about'])) $config['about'] = $_POST['about'];
+    if (isset($_POST['services'])) $config['services'] = $_POST['services'];
+    if (isset($_POST['properties'])) $config['properties'] = $_POST['properties'];
+    if (isset($_POST['reviews'])) $config['reviews'] = $_POST['reviews'];
+    if (isset($_POST['contact'])) $config['contact'] = $_POST['contact'];
+    if (isset($_POST['footer'])) $config['footer'] = $_POST['footer'];
+    if (isset($_POST['telegram'])) $config['telegram'] = $_POST['telegram'];
+    
+    file_put_contents($CONFIG_FILE, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    $success_msg = 'Конфигурация успешно сохранена!';
+    header('Location: admin.php?tab=settings&saved=1'); exit;
+}
+
+// Обработка добавления объекта
+if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_property'])) {
+    $config = json_decode(file_get_contents($CONFIG_FILE), true) ?: [];
+    $newProperty = [
+        'id' => count($config['properties']['items'] ?? []) + 1,
+        'title' => $_POST['title'] ?? 'Новый объект',
+        'price' => $_POST['price'] ?? '0 ₽',
+        'area' => $_POST['area'] ?? '',
+        'rooms' => $_POST['rooms'] ?? '1',
+        'img' => $_POST['img'] ?? '',
+        'location' => $_POST['location'] ?? '',
+        'badge' => $_POST['badge'] ?? '',
+        'description' => $_POST['description'] ?? '',
+        'gallery' => [],
+        'features' => [],
+        'quick' => []
+    ];
+    $config['properties']['items'][] = $newProperty;
+    file_put_contents($CONFIG_FILE, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    header('Location: admin.php?tab=properties&added=1'); exit;
+}
+
+// Обработка удаления объекта
+if ($isLoggedIn && isset($_GET['delete_property']) && is_numeric($_GET['delete_property'])) {
+    $config = json_decode(file_get_contents($CONFIG_FILE), true) ?: [];
+    if (isset($config['properties']['items'][$_GET['delete_property']])) {
+        array_splice($config['properties']['items'], $_GET['delete_property'], 1);
+        file_put_contents($CONFIG_FILE, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     }
-    if (isset($_GET['clear_all'])) { file_put_contents($DATA_FILE, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); header('Location: admin.php?tab=leads'); exit; }
+    header('Location: admin.php?tab=properties'); exit;
 }
 ?>
 <!DOCTYPE html>
@@ -101,8 +155,9 @@ $tab = $_GET['tab'] ?? 'dashboard';
 <ul class="nav-menu">
 <li class="nav-item"><a href="?tab=dashboard" class="nav-link <?php echo $tab==='dashboard'?'active':'';?>"><span class="nav-icon">📊</span>Дашборд</a></li>
 <li class="nav-item"><a href="?tab=leads" class="nav-link <?php echo $tab==='leads'?'active':'';?>"><span class="nav-icon">📋</span>Заявки<?php if(count($leads)>0) echo " <span style='margin-left:auto;background:var(--orange);color:#fff;padding:2px 8px;border-radius:10px;font-size:0.75rem'>".count($leads)."</span>";?></a></li>
+<li class="nav-item"><a href="?tab=properties" class="nav-link <?php echo $tab==='properties'?'active':'';?>"><span class="nav-icon">🏠</span>Объекты</a></li>
 <li class="nav-item"><a href="?tab=stats" class="nav-link <?php echo $tab==='stats'?'active':'';?>"><span class="nav-icon">📈</span>Статистика</a></li>
-<li class="nav-item"><a href="?tab=settings" class="nav-link <?php echo $tab==='settings'?'active':'';?>"><span class="nav-icon">⚙️</span>Настройки</a></li>
+<li class="nav-item"><a href="?tab=settings" class="nav-link <?php echo $tab==='settings'?'active':'';?>"><span class="nav-icon">⚙️</span>Настройки сайта</a></li>
 </ul>
 <div class="sidebar-footer"><a href="?logout=1" class="nav-link"><span class="nav-icon">🚪</span>Выйти</a><a href="index.html" class="nav-link" target="_blank"><span class="nav-icon">🌐</span>На сайт</a></div>
 </aside>
@@ -139,21 +194,117 @@ $tab = $_GET['tab'] ?? 'dashboard';
 <div class="stat-card"><div class="stat-icon purple">📊</div><div class="stat-value"><?php echo $todayStats['forms']>0?round(($todayStats['forms']/max($todayStats['views']??1,1))*100,1):0;?>%</div><div class="stat-label">Конверсия</div></div>
 </div></div>
 
+<div class="tab-content <?php echo $tab==='properties'?'active':'';?>" id="tab-properties">
+<div class="page-header"><h1 class="page-title">Объекты недвижимости</h1><p class="page-subtitle">Управление объектами</p></div>
+<?php 
+$config = json_decode(file_get_contents($CONFIG_FILE), true) ?: [];
+$properties = $config['properties']['items'] ?? [];
+?>
+<div style="margin-bottom:20px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+<h3 style="margin-bottom:16px">➕ Добавить объект</h3>
+<form method="POST" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">
+<input type="text" name="title" placeholder="Название объекта" class="form-input" required>
+<input type="text" name="price" placeholder="Цена (например: 5 000 000 ₽)" class="form-input" required>
+<input type="text" name="area" placeholder="Площадь (например: 45 м²)" class="form-input">
+<input type="text" name="rooms" placeholder="Комнат" class="form-input" value="1">
+<input type="text" name="img" placeholder="Путь к фото (images/...)" class="form-input">
+<input type="text" name="location" placeholder="Адрес" class="form-input" style="grid-column:span 2">
+<input type="text" name="badge" placeholder="Бейдж (Новая цена, Хит и т.д.)" class="form-input">
+<textarea name="description" placeholder="Описание объекта" class="form-input" style="grid-column:span 2;min-height:80px"></textarea>
+<button type="submit" name="add_property" class="btn" style="grid-column:span 2">Добавить объект</button>
+</form>
+</div>
+
+<div class="table-container">
+<div class="table-header"><h3 class="table-title">Все объекты (<?php echo count($properties); ?>)</h3></div>
+<table><thead><tr><th>#</th><th>Фото</th><th>Название</th><th>Цена</th><th>Площадь</th><th>Адрес</th><th>Действия</th></tr></thead><tbody>
+<?php if(empty($properties)):?><tr><td colspan="7" class="empty-state"><div class="empty-state-icon">🏠</div>Нет объектов</td></tr>
+<?php else: foreach($properties as $idx=>$prop):?>
+<tr>
+<td><?php echo $idx+1;?></td>
+<td style="width:80px"><?php if(!empty($prop['img'])):?><img src="<?php echo htmlspecialchars($prop['img']);?>" alt="" style="width:60px;height:40px;object-fit:cover;border-radius:4px"><?php else:?><span style="color:var(--text-muted)">Нет фото</span><?php endif;?></td>
+<td><?php echo htmlspecialchars($prop['title']);?></td>
+<td style="color:var(--orange);font-weight:600"><?php echo htmlspecialchars($prop['price']);?></td>
+<td><?php echo htmlspecialchars($prop['area']);?></td>
+<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?php echo htmlspecialchars($prop['location']);?></td>
+<td><div class="action-btns"><a href="?delete_property=<?php echo $idx;?>" class="action-btn delete" onclick="return confirm('Удалить объект?')">🗑️</a></td></tr>
+<?php endforeach; endif;?>
+</tbody></table></div></div>
+
 <div class="tab-content <?php echo $tab==='settings'?'active':'';?>" id="tab-settings">
-<div class="page-header"><h1 class="page-title">Настройки</h1><p class="page-subtitle">Параметры</p></div>
-<div class="table-container"><div class="table-header"><h3 class="table-title">Информация</h3></div>
-<table><tbody>
-<tr><td>Пароль</td><td><code>********</code></td><td><button class="action-btn view" onclick="alert('Измените $ADMIN_PASSWORD в admin.php')">Изменить</button></td></tr>
-<tr><td>Файл данных</td><td><code>leads.json</code></td><td></td></tr>
-<tr><td>Статистика</td><td><code>stats.json</code></td><td></td></tr>
-</tbody></table></div>
+<div class="page-header"><h1 class="page-title">Настройки сайта</h1><p class="page-subtitle">Редактирование контента</p></div>
+
+<?php 
+if(isset($_GET['saved'])): ?>
+<div style="margin-bottom:20px;padding:16px;background:rgba(16,185,129,0.1);border:1px solid var(--success);border-radius:var(--radius);color:var(--success)">Конфигурация успешно сохранена!</div>
+<?php endif;
+
+$config = json_decode(file_get_contents($CONFIG_FILE), true) ?: [];
+?>
+
+<form method="POST" style="display:grid;gap:24px">
+<!-- Основные настройки -->
+<div class="table-container">
+<div class="table-header"><h3 class="table-title">📱 Основная информация</h3></div>
+<div style="padding:20px;display:grid;gap:16px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+<div><label class="form-label">Заголовок сайта (title)</label><input type="text" name="site[title]" value="<?php echo htmlspecialchars($config['site']['title'] ?? ''); ?>" class="form-input"></div>
+<div><label class="form-label">Описание (description)</label><input type="text" name="site[description]" value="<?php echo htmlspecialchars($config['site']['description'] ?? ''); ?>" class="form-input"></div>
+</div>
+</div>
+</div>
+
+<!-- Шапка -->
+<div class="table-container">
+<div class="table-header"><h3 class="table-title">🎨 Цветовая схема</h3></div>
+<div style="padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">
+<?php foreach(($config['colors'] ?? []) as $key=>$value):?>
+<div><label class="form-label"><?php echo ucfirst($key); ?></label><input type="color" name="colors[<?php echo $key; ?>]" value="<?php echo htmlspecialchars($value); ?>" style="width:100%;height:40px;border:none;border-radius:8px;cursor:pointer"></div>
+<?php endforeach;?>
+</div>
+</div>
+
+<!-- Hero секция -->
+<div class="table-container">
+<div class="table-header"><h3 class="table-title">🏠 Главный экран (Hero)</h3></div>
+<div style="padding:20px;display:grid;gap:16px">
+<label class="form-label">Заголовок</label><input type="text" name="hero[title]" value="<?php echo htmlspecialchars($config['hero']['title'] ?? ''); ?>" class="form-input">
+<label class="form-label">Подзаголовок</label><textarea name="hero[subtitle]" class="form-input" style="min-height:60px"><?php echo htmlspecialchars($config['hero']['subtitle'] ?? ''); ?></textarea>
+<label class="form-label">Текст кнопки (заявка)</label><input type="text" name="hero[btn_primary]" value="<?php echo htmlspecialchars($config['hero']['btn_primary'] ?? 'Оставить заявку'); ?>" class="form-input">
+<label class="form-label">Текст кнопки (объекты)</label><input type="text" name="hero[btn_secondary]" value="<?php echo htmlspecialchars($config['hero']['btn_secondary'] ?? 'Смотреть объекты'); ?>" class="form-input">
+</div>
+</div>
+
+<!-- Контакты -->
+<div class="table-container">
+<div class="table-header"><h3 class="table-title">📞 Контактная информация</h3></div>
+<div style="padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+<div><label class="form-label">Телефон</label><input type="text" name="contact[phone]" value="<?php echo htmlspecialchars($config['contact']['phone'] ?? ''); ?>" class="form-input"></div>
+<div><label class="form-label">Email</label><input type="email" name="contact[email]" value="<?php echo htmlspecialchars($config['contact']['email'] ?? ''); ?>" class="form-input"></div>
+<div style="grid-column:span 2"><label class="form-label">Адрес</label><input type="text" name="contact[address]" value="<?php echo htmlspecialchars($config['contact']['address'] ?? ''); ?>" class="form-input"></div>
+<div style="grid-column:span 2"><label class="form-label">Описание</label><textarea name="contact[description]" class="form-input" style="min-height:60px"><?php echo htmlspecialchars($config['contact']['description'] ?? ''); ?></textarea></div>
+</div>
+</div>
+
+<!-- Telegram -->
+<div class="table-container">
+<div class="table-header"><h3 class="table-title">✈️ Telegram бот</h3></div>
+<div style="padding:20px;display:grid;gap:16px">
+<div><label class="form-label">Bot Token</label><input type="text" name="telegram[bot_token]" value="<?php echo htmlspecialchars($config['telegram']['bot_token'] ?? ''); ?>" class="form-input" placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"></div>
+<div><label class="form-label">Chat IDs (через запятую)</label><input type="text" name="telegram[chat_ids]" value="<?php echo htmlspecialchars(implode(',', $config['telegram']['chat_ids'] ?? [])); ?>" class="form-input" placeholder="123456789,987654321"></div>
+</div>
+</div>
+
+<button type="submit" name="save_config" class="btn glow">💾 Сохранить все изменения</button>
+</form>
+
 <div style="margin-top:20px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
 <h3 style="margin-bottom:12px">ℹ️ Как использовать</h3>
 <ul style="color:var(--text-muted);line-height:1.8;padding-left:20px">
-<li>Заявки сохраняются автоматически при отправке формы</li>
-<li>Данные в файле leads.json</li>
-<li>Для смены пароля измените $ADMIN_PASSWORD в начале файла admin.php</li>
-<li>Кнопка 📞 открывает телефонную книгу</li>
+<li>Изменения вступают в силу сразу после сохранения</li>
+<li>Для применения изменений на сайте может потребоваться обновить страницу (F5)</li>
+<li>Все данные хранятся в файле config.json</li>
+<li>Чтобы сбросить настройки - удалите файл config.json</li>
 </ul></div></div>
 </main></div>
 
